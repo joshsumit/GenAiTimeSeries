@@ -73,6 +73,7 @@ class IdealDPM_old(nn.Module):
         return self.project(padded)
     
 
+
 class IdealDPM(nn.Module):
     def __init__(self, input_dim, embed_dim, max_patches=8, attn_heads=2, dropout=0.1):
         super().__init__()
@@ -82,7 +83,7 @@ class IdealDPM(nn.Module):
             nn.Linear(embed_dim, 32),
             nn.ReLU(),
             nn.Linear(32, 1),
-            nn.Sigmoid()  # Outputs boundary probabilities ∈ (0, 1)
+            nn.Sigmoid()
         )
         self.project = nn.Linear(embed_dim, embed_dim)
         self.max_patches = max_patches
@@ -94,23 +95,24 @@ class IdealDPM(nn.Module):
         attn_out = self.dropout(attn_out)
         boundary_scores = self.boundary_predictor(attn_out).squeeze(-1)  # [B, T]
 
-        # Compute cumulative boundary probability
         cbp = torch.cumsum(boundary_scores, dim=1)  # [B, T]
         cbp = cbp / (cbp[:, -1:] + 1e-6)  # Normalize to [0, 1]
 
-        # Assign patch ids by quantizing CBP
         patch_ids = (cbp * self.max_patches).floor().long().clamp(max=self.max_patches - 1)  # [B, T]
 
-        # Aggregate embeddings per patch
         B, T, D = attn_out.shape
         patch_embeddings = torch.zeros(B, self.max_patches, D, device=x.device)
-        for b in range(B):
-            for p in range(self.max_patches):
-                mask = (patch_ids[b] == p).unsqueeze(-1)  # [T, 1]
-                if mask.any():
-                    patch_embeddings[b, p] = (attn_out[b] * mask.float()).sum(dim=0) / mask.sum()
+        counts = torch.zeros(B, self.max_patches, 1, device=x.device)
 
-        return self.project(patch_embeddings)  # [B, max_patches, D]
+        patch_ids_exp = patch_ids.unsqueeze(-1).expand(-1, -1, D)
+        patch_embeddings.scatter_add_(1, patch_ids_exp, attn_out)
+
+        ones = torch.ones(B, T, 1, device=x.device)
+        patch_ids_exp_count = patch_ids.unsqueeze(-1).expand(-1, -1, 1)
+        counts.scatter_add_(1, patch_ids_exp_count, ones)
+
+        patch_embeddings = patch_embeddings / counts.clamp(min=1)
+        return self.project(patch_embeddings)
 
 
 # -------------------------------
