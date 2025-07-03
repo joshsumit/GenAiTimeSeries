@@ -12,7 +12,7 @@ from finetune import main as finetune_main
 
 def run_all():
     print("Starting pretraining phase...")
-   # pretrain_main()
+    pretrain_main()
     print("Pretraining completed.\n")
 
     print("Starting fine-tuning phase...")

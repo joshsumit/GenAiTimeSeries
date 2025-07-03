@@ -14,7 +14,7 @@ def main():
     scaler = StandardScaler()
     scaled = scaler.fit_transform(df_numeric.values)
 
-    input_len = 96
+    input_len = 512
     batch_size = 32
     embed_dim = 64
     epochs = 10

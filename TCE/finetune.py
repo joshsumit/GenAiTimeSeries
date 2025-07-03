@@ -34,25 +34,35 @@ def train_model(encoder, head, train_loader, loss_fn, optimizer, epochs):
         print(f"Finetune Epoch {epoch+1}/{epochs} - Train Loss: {avg_loss:.4f}")
 
 def main():
-    df = pd.read_csv("ETTh2.csv")
-    df = df.drop(columns=[df.columns[0]])  # Drop timestamp
-    scaler = StandardScaler()
-    scaled_data = scaler.fit_transform(df.values)
-
-    input_len = 96
-    pred_len = 24
+    input_len = 512
+    pred_len = 720  # 96 #
     batch_size = 32
     embed_dim = 64
-    epochs = 10
-    input_dim = scaled_data.shape[1]
-    target_col = df.columns.get_loc("OT")
+    epochs = 30
 
-    n = len(scaled_data)
+    df = pd.read_csv("ETTh2.csv")
+    df = df.drop(columns=[df.columns[0]])  # Drop timestamp
+
+    n = len(df)
     train_end = int(0.7 * n)
     val_end = int(0.85 * n)
-    train_data = scaled_data[:train_end]
-    val_data = scaled_data[train_end:val_end]
-    test_data = scaled_data[val_end:]
+
+    # Split before scaling
+    train_df = df.iloc[:train_end]
+    val_df = df.iloc[train_end:val_end]
+    test_df = df.iloc[val_end:]
+
+    # Fit scaler only on training data
+    scaler = StandardScaler()
+    scaler.fit(train_df.values)
+
+    # Transform all splits
+    train_data = scaler.transform(train_df.values)
+    val_data = scaler.transform(val_df.values)
+    test_data = scaler.transform(test_df.values)
+
+    input_dim = train_data.shape[1]
+    target_col = df.columns.get_loc("OT")
 
     train_dataset = ForecastingDataset(train_data, input_len, pred_len, target_col)
     val_dataset = ForecastingDataset(val_data, input_len, pred_len, target_col)
