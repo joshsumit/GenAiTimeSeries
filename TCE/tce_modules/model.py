@@ -122,6 +122,7 @@ class ForecastingHead(nn.Module):
         self.mlp = nn.Sequential(
             nn.Linear(embed_dim, 256),
             nn.ReLU(),
+            nn.Dropout(0.2), # Add dropout here
             nn.Linear(256, pred_len)
         )
         init_linear_layers(self)

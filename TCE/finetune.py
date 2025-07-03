@@ -11,9 +11,31 @@ from tqdm import tqdm
 from tce_modules.model import IdealDPM, ForecastingHead
 from tce_modules.dataset import ForecastingDataset
 
+import random
+
+
+def set_seed(seed=42):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+set_seed(42)
+
 def train_model(encoder, head, train_loader, loss_fn, optimizer, epochs):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     for epoch in range(epochs):
+        if epoch < 10:
+            encoder.eval()
+            for param in encoder.parameters():
+                param.requires_grad = False
+        else:
+            encoder.train()
+            for param in encoder.parameters():
+                param.requires_grad = True
+
         head.train()
         total_loss = 0
         train_iter = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}", leave=False)
@@ -35,10 +57,10 @@ def train_model(encoder, head, train_loader, loss_fn, optimizer, epochs):
 
 def main():
     input_len = 512
-    pred_len = 720  # 96 #
+    pred_len = 96 # 720  # 96 #
     batch_size = 32
     embed_dim = 64
-    epochs = 30
+    epochs = 50
 
     df = pd.read_csv("ETTh2.csv")
     df = df.drop(columns=[df.columns[0]])  # Drop timestamp
@@ -76,19 +98,29 @@ def main():
     pretrained_weights = torch.load("masked_tce_with_uae.pt")
     dpm_state_dict = {k.replace("dpm.", ""): v for k, v in pretrained_weights.items() if k.startswith("dpm.")}
     encoder.load_state_dict(dpm_state_dict, strict=False)
-    encoder.eval()
+    #encode.eval
+
 
     head = ForecastingHead(embed_dim, pred_len)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     encoder = encoder.to(device)
     head = head.to(device)
 
-    optimizer = torch.optim.Adam(head.parameters(), lr=1e-3)
+    #optimizer = torch.optim.Adam(head.parameters(), lr=1e-3)
+    
+    optimizer = torch.optim.Adam([
+    {'params': encoder.parameters(), 'lr': 1e-4},
+    {'params': head.parameters(), 'lr': 1e-3}
+    ])
+
+    #optimizer = torch.optim.Adam(list(encoder.parameters()) + list(head.parameters()), lr=1e-3)
+
     loss_fn = torch.nn.MSELoss()
 
     train_model(encoder, head, train_loader, loss_fn, optimizer, epochs)
 
     def evaluate(loader):
+        encoder.eval()
         head.eval()
         preds, trues = [], []
         with torch.no_grad():
